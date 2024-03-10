@@ -45,24 +45,23 @@ def request_handler(sock: socket.socket) -> None:
     request = HTTPRequest.from_bytes(request_bytes)
 
     headers = {}
-    response_body = []
+    response_body = ""
 
     response_code = "404 Not Found"
     if request.path == "/":
         response_code = "200 OK"
     elif request.path.startswith("/echo/"):
         response_code = "200 OK"
-        echo_content = request.path[len("/echo/") :]
+        response_body = request.path[len("/echo/") :]
 
         headers["Content-Type"] = "text/plain"
-        headers["Content-Length"] = len(echo_content)
-        response_body.append(echo_content)
+        headers["Content-Length"] = len(response_body)
 
     response_contents = [
         f"{request.http_version} {response_code}",
         *[f"{key}: {value}" for key, value in headers.items()],
         "",
-        *response_body,
+        response_body,
     ]
     print("\r\n".join(response_contents).encode())
     sock.send("\r\n".join(response_contents).encode())
