@@ -37,7 +37,8 @@ def main() -> None:
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
     while True:
         sock, response_addr = server_socket.accept()  # wait for client
-        request_handler(sock)
+        t = threading.Thread(target=lambda: request_handler(sock))
+        t.start()
 
 
 def request_handler(sock: socket.socket) -> None:
