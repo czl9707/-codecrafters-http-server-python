@@ -56,6 +56,12 @@ def request_handler(sock: socket.socket) -> None:
 
         headers["Content-Type"] = "text/plain"
         headers["Content-Length"] = len(response_body)
+    elif request.path.startswith("/user-agent"):
+        response_code = "200 OK"
+        response_body = request.headers.get("User-Agent")
+
+        headers["Content-Type"] = "text/plain"
+        headers["Content-Length"] = len(response_body)
 
     response_contents = [
         f"{request.http_version} {response_code}",
@@ -63,7 +69,7 @@ def request_handler(sock: socket.socket) -> None:
         "",
         response_body,
     ]
-    print("\r\n".join(response_contents).encode())
+
     sock.send("\r\n".join(response_contents).encode())
     sock.close()
 
