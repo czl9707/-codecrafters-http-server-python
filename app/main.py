@@ -2,23 +2,21 @@ import pathlib
 import socket
 import threading
 import argparse
-import os
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 
-STATIC_DIRECTORY: List[pathlib.Path] = []
+STATIC_DIRECTORY: Optional[pathlib.Path] = None
 
 
 def resolve_path(path: pathlib.Path) -> Optional[pathlib.Path]:
+    if STATIC_DIRECTORY is None:
+        return None
+
     if path.is_absolute():
-        for d in STATIC_DIRECTORY:
-            if str(path).startswith(str(d)) and path.exists():
-                return path
+        if str(path).startswith(str(STATIC_DIRECTORY)):
+            return path
     else:
-        for d in STATIC_DIRECTORY:
-            full_path = d.joinpath(path)
-            if full_path.exists():
-                return full_path
+        return STATIC_DIRECTORY.joinpath(path)
 
     return None
 
@@ -27,6 +25,7 @@ class HTTPRequest:
     method: str
     path: str
     http_version: str
+    body: bytes
     headers: Dict[str, str]
 
     def __init__(self) -> None:
@@ -35,7 +34,6 @@ class HTTPRequest:
     @staticmethod
     def from_bytes(request_bytes: bytes) -> "HTTPRequest":
         request = HTTPRequest()
-
         line_iter = iter(request_bytes.split(b"\r\n"))
         line = next(line_iter)
         request.method, request.path, request.http_version = [
@@ -43,22 +41,24 @@ class HTTPRequest:
         ]
 
         for line in line_iter:
-            if len(line.strip()) == 0:
-                continue
+            if len(line) == 0:
+                break
 
             key, value = line.split(b":", maxsplit=1)
             request.headers[key.decode()] = value.decode().strip()
+
+        request.body = b"\r\n".join(line_iter)
+        print(request.body)
 
         return request
 
 
 def main() -> None:
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--directory", dest="directory", nargs="*", default=[])
+    arg_parser.add_argument("--directory", dest="directory", default=None)
     ns = arg_parser.parse_args()
-
-    for d in ns.directory:
-        STATIC_DIRECTORY.append(pathlib.Path(d))
+    global STATIC_DIRECTORY
+    STATIC_DIRECTORY = pathlib.Path(ns.directory)
 
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
     while True:
@@ -90,16 +90,23 @@ def request_handler(sock: socket.socket) -> None:
         headers["Content-Type"] = "text/plain"
         headers["Content-Length"] = len(response_body)
     elif request.path.startswith("/files/"):
-        path = pathlib.Path(request.path[len("/files/") :])
-        path = resolve_path(path)
-        if path is None:
-            response_code = "404 Not Found"
-        else:
-            response_code = "200 OK"
-            with open(path, "r") as f:
-                response_body = f.read()
-            headers["Content-Type"] = "application/octet-stream"
-            headers["Content-Length"] = len(response_body)
+        if request.method == "GET":
+            path = pathlib.Path(request.path[len("/files/") :])
+            path = resolve_path(path)
+            if path is None or not path.exists():
+                response_code = "404 Not Found"
+            else:
+                with open(path, "r") as f:
+                    response_body = f.read()
+                response_code = "200 OK"
+                headers["Content-Type"] = "application/octet-stream"
+                headers["Content-Length"] = len(response_body)
+        elif request.method == "POST":
+            path = pathlib.Path(request.path[len("/files/") :])
+            path = resolve_path(path)
+            with open(path, "xb") as f:
+                f.write(request.body)
+            response_code = "201 Created"
 
     response_contents = [
         f"{request.http_version} {response_code}",
