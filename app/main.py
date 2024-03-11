@@ -58,7 +58,7 @@ def main() -> None:
     arg_parser.add_argument("--directory", dest="directory", default=None)
     ns = arg_parser.parse_args()
     global STATIC_DIRECTORY
-    STATIC_DIRECTORY = pathlib.Path(ns.directory)
+    STATIC_DIRECTORY = pathlib.Path(ns.directory) if ns.directory is not None else None
 
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
     while True:
