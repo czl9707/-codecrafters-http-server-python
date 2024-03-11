@@ -1,7 +1,26 @@
-# Uncomment this to pass the first stage
+import pathlib
 import socket
 import threading
-from typing import Dict
+import argparse
+import os
+from typing import Dict, List, Optional
+
+
+STATIC_DIRECTORY: List[pathlib.Path] = []
+
+
+def resolve_path(path: pathlib.Path) -> Optional[pathlib.Path]:
+    if path.is_absolute():
+        for d in STATIC_DIRECTORY:
+            if str(path).startswith(str(d)) and path.exists():
+                return path
+    else:
+        for d in STATIC_DIRECTORY:
+            full_path = d.joinpath(path)
+            if full_path.exists():
+                return full_path
+
+    return None
 
 
 class HTTPRequest:
@@ -34,6 +53,13 @@ class HTTPRequest:
 
 
 def main() -> None:
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--directory", dest="directory", nargs="*", default=[])
+    ns = arg_parser.parse_args()
+
+    for d in ns.directory:
+        STATIC_DIRECTORY.append(pathlib.Path(d))
+
     server_socket = socket.create_server(("localhost", 4221), reuse_port=True)
     while True:
         sock, response_addr = server_socket.accept()  # wait for client
@@ -63,6 +89,17 @@ def request_handler(sock: socket.socket) -> None:
 
         headers["Content-Type"] = "text/plain"
         headers["Content-Length"] = len(response_body)
+    elif request.path.startswith("/files/"):
+        path = pathlib.Path(request.path[len("/files/") :])
+        path = resolve_path(path)
+        if path is None:
+            response_code = "404 Not Found"
+        else:
+            response_code = "200 OK"
+            with open(path, "r") as f:
+                response_body = f.read()
+            headers["Content-Type"] = "application/octet-stream"
+            headers["Content-Length"] = len(response_body)
 
     response_contents = [
         f"{request.http_version} {response_code}",
